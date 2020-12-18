@@ -3,13 +3,14 @@
  *
  *   Creator: Matthieu 'Rubisetcie' Carteron
  *   Forked from: Simontime's interp repository
- *
  * ***********************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+
+#include "int24.h"
 
 #define MIN(a, b) ((a)<(b)?(a):(b))
 #define MAX(a, b) ((a)>(b)?(a):(b))
@@ -86,8 +87,7 @@ static inline int parseWavHeader(FILE *f)
 	/* Reading the header */
 	fread(&header, sizeof(WavHeader), 1, f);
 
-	if (!CHECK_MAGIC(header.chunkId, "RIFF") ||
-        (header.bitsPerSample != 16 && header.bitsPerSample != 32 && header.bitsPerSample != 64))
+	if (!CHECK_MAGIC(header.chunkId, "RIFF"))
     {
         return 0;
     }
@@ -100,6 +100,12 @@ static inline int parseWavHeader(FILE *f)
     /* If the format is PCM */
     if (header.audioFormat == 1)
     {
+        /* Checking if the bits per sample are correct */
+        if (header.bitsPerSample != 16 && header.bitsPerSample != 24 && header.bitsPerSample != 32)
+        {
+            return 0;
+        }
+
         /* Checking the presence of the optional "fact chunk" */
         fread(&fact, sizeof(fact), 1, f);
 
@@ -118,6 +124,12 @@ static inline int parseWavHeader(FILE *f)
     /* If the format is IEEE float */
     else if (header.audioFormat == 3)
     {
+        /* Checking if the bits per sample are correct */
+        if (header.bitsPerSample != 32 && header.bitsPerSample != 64)
+        {
+            return 0;
+        }
+
         /* The IEEE float specifies that an extension must be present on the header chunk,
          * however, 32-bit floating point WAV exported from Audacity doesn't have it.
          *
@@ -229,6 +241,42 @@ static inline void processPCM16bits(void *inBuf, void *outBuf)
 
             /* Calculate the average of the previous and current sample */
             *outPtr++ = min + ((max - min) / 2);
+        }
+
+        for (c = 0; c < g_NumChannels; c++)
+        {
+            sampleHistory[c] = *outPtr++ = sample[c];
+        }
+    }
+
+    free(sampleHistory);
+    free(sample);
+}
+
+/* Processes the sampling for WAV PCM 24 bits */
+static inline void processPCM24bits(void *inBuf, void *outBuf)
+{
+    int24 *inPtr = (int24*) inBuf, *outPtr = (int24*) outBuf, *sample, *sampleHistory;
+	int min, max, l = g_NumChannels * sizeof(int24);
+	register int i, c;
+
+	sample = malloc(l);
+	sampleHistory = malloc(l);
+
+	/* Proceed to initialize the sample history with zeros or else the algorithm will not work */
+    memset(sampleHistory, 0, l);
+
+    for (i = 0; i < g_TotalSize; i += l)
+    {
+        for (c = 0; c < g_NumChannels; c++)
+        {
+            sample[c] = *inPtr++;
+
+            min = min24(sample[c], sampleHistory[c]);
+            max = max24(sample[c], sampleHistory[c]);
+
+            /* Calculate the average of the previous and current sample */
+            *outPtr++ = toInt24(min + ((max - min) / 2));
         }
 
         for (c = 0; c < g_NumChannels; c++)
@@ -403,13 +451,14 @@ int main(int argc, char **argv)
 	/* Processing sampling */
 	if (g_AudioFormat == 1)
 	{
-        if (g_BitsPerSample == 16)  processPCM16bits(inBuf, outBuf);
-        else                        processPCM32bits(inBuf, outBuf);
+        if (g_BitsPerSample == 16)      processPCM16bits(inBuf, outBuf);
+        else if (g_BitsPerSample == 24) processPCM24bits(inBuf, outBuf);
+        else                            processPCM32bits(inBuf, outBuf);
 	}
 	else
 	{
-        if (g_BitsPerSample == 32)  processFloat32bits(inBuf, outBuf);
-        else                        processFloat64bits(inBuf, outBuf);
+        if (g_BitsPerSample == 32)      processFloat32bits(inBuf, outBuf);
+        else                            processFloat64bits(inBuf, outBuf);
 	}
 
 	writeWavHeader(out);
