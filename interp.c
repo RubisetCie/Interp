@@ -28,25 +28,25 @@ typedef struct PeakPos
 /* Definition of the WAV header structure */
 typedef struct WavHeader
 {
-	char    chunkId[4];
-	int32_t chunkSize;
-	char    format[4];
-	char    subChunk1Id[4];
-	int32_t subChunk1Size;
-	int16_t audioFormat;
-	int16_t numChannels;
-	int32_t sampleRate;
-	int32_t byteRate;
-	int16_t blockAlign;
-	int16_t bitsPerSample;
+    char    chunkId[4];
+    int32_t chunkSize;
+    char    format[4];
+    char    subChunk1Id[4];
+    int32_t subChunk1Size;
+    int16_t audioFormat;
+    int16_t numChannels;
+    int32_t sampleRate;
+    int32_t byteRate;
+    int16_t blockAlign;
+    int16_t bitsPerSample;
 } WavHeader;
 
 /* Definition of the WAV Fact chunk mandatory for non-PCM formats (like IEEE float) */
 typedef struct WavFact
 {
     char    chunkId[4];
-	int32_t chunkSize;
-	int32_t sampleLength;
+    int32_t chunkSize;
+    int32_t sampleLength;
 } WavFact;
 
 /* Definition of the WAV Peak chunk */
@@ -63,13 +63,14 @@ typedef struct WavPeak
 typedef struct WavData
 {
     char    chunkId[4];
-	int32_t chunkSize;
+    int32_t chunkSize;
 } WavData;
 
 /* Global variables */
 static int16_t  g_AudioFormat;
 static int16_t  g_BitsPerSample;
 static int16_t  g_NumChannels;
+static int32_t  g_ByteRate;
 static int32_t  g_SampleRate;
 static int32_t  g_SampleLength;
 static int32_t  g_TotalSize;
@@ -79,23 +80,24 @@ static WavPeak *g_PeakChunk = NULL;
 /* Reads the WAV header from a file */
 static inline int parseWavHeader(FILE *f)
 {
-	WavHeader header;
-	WavFact fact;
-	WavData data;
-	char sbuf[4];
+    WavHeader header;
+    WavFact fact;
+    WavData data;
+    char sbuf[4];
 
-	/* Reading the header */
-	fread(&header, sizeof(WavHeader), 1, f);
+    /* Reading the header */
+    fread(&header, sizeof(WavHeader), 1, f);
 
-	if (!CHECK_MAGIC(header.chunkId, "RIFF"))
+    if (!CHECK_MAGIC(header.chunkId, "RIFF"))
     {
         return 0;
     }
 
     g_AudioFormat   = header.audioFormat;
-	g_BitsPerSample = header.bitsPerSample;
-	g_NumChannels   = header.numChannels;
-	g_SampleRate    = header.sampleRate;
+    g_BitsPerSample = header.bitsPerSample;
+    g_NumChannels   = header.numChannels;
+    g_SampleRate    = header.sampleRate;
+	g_ByteRate		= header.byteRate;
 
     /* If the format is PCM */
     if (header.audioFormat == 1)
@@ -111,7 +113,7 @@ static inline int parseWavHeader(FILE *f)
 
         if (!CHECK_MAGIC(fact.chunkId, "fact"))
         {
-            fseek(f, -sizeof(fact), SEEK_CUR);
+            fseek(f, -(long)sizeof(fact), SEEK_CUR);
         }
 
         /* Reading the data chunk */
@@ -174,60 +176,60 @@ static inline int parseWavHeader(FILE *f)
 /* Write the WAV header to a file */
 static inline void writeWavHeader(FILE *f)
 {
-	WavHeader header = {0};
-	WavFact fact = {0};
-	WavData data = {0};
+    WavHeader header = {0};
+    WavFact fact = {0};
+    WavData data = {0};
 
-	/* Setting the WAV header */
-	SET_MAGIC(header.chunkId, "RIFF");
-	header.chunkSize = (g_TotalSize * 2) + sizeof(WavHeader);
-	SET_MAGIC(header.format, "WAVE");
+    /* Setting the WAV header */
+    SET_MAGIC(header.chunkId, "RIFF");
+    header.chunkSize = (g_TotalSize * 2) + sizeof(WavHeader);
+    SET_MAGIC(header.format, "WAVE");
 
-	SET_MAGIC(header.subChunk1Id, "fmt ");
-	header.subChunk1Size    = 16;
-	header.audioFormat      = g_AudioFormat;
-	header.numChannels      = g_NumChannels;
-	header.sampleRate       = g_SampleRate * 2;
-	header.byteRate         = g_SampleRate * 2 * g_NumChannels * 2;
-	header.blockAlign       = g_NumChannels * 2;
-	header.bitsPerSample    = g_BitsPerSample;
+    SET_MAGIC(header.subChunk1Id, "fmt ");
+    header.subChunk1Size    = 16;
+    header.audioFormat      = g_AudioFormat;
+    header.numChannels      = g_NumChannels;
+    header.sampleRate       = g_SampleRate * 2;
+    header.byteRate         = g_ByteRate * 2;
+    header.blockAlign       = g_NumChannels * 2;
+    header.bitsPerSample    = g_BitsPerSample;
 
-	fwrite(&header, sizeof(WavHeader), 1, f);
+    fwrite(&header, sizeof(WavHeader), 1, f);
 
-	/* Setting the WAV fact chunk */
-	if (g_AudioFormat != 1)
-	{
+    /* Setting the WAV fact chunk */
+    if (g_AudioFormat != 1)
+    {
         SET_MAGIC(fact.chunkId, "fact");
         fact.chunkSize = 4;
         fact.sampleLength = g_SampleLength * 2;
 
         fwrite(&fact, sizeof(WavFact), 1, f);
-	}
+    }
 
-	/* Setting the WAV peak chunk */
-	if (g_PeakChunk != NULL)
-	{
+    /* Setting the WAV peak chunk */
+    if (g_PeakChunk != NULL)
+    {
         fwrite(g_PeakChunk, g_PeakChunkLength, 1, f);
-	}
+    }
 
-	/* Setting the WAV data chunk */
-	SET_MAGIC(data.chunkId, "data");
-	data.chunkSize = g_TotalSize * 2;
+    /* Setting the WAV data chunk */
+    SET_MAGIC(data.chunkId, "data");
+    data.chunkSize = g_TotalSize * 2;
 
-	fwrite(&data, sizeof(WavData), 1, f);
+    fwrite(&data, sizeof(WavData), 1, f);
 }
 
 /* Processes the sampling for WAV PCM 16 bits */
 static inline void processPCM16bits(void *inBuf, void *outBuf)
 {
     int16_t *inPtr = (int16_t*) inBuf, *outPtr = (int16_t*) outBuf, min, max, *sample, *sampleHistory;
-	int l = g_NumChannels * sizeof(int16_t);
-	register int i, c;
+    int l = g_NumChannels * sizeof(int16_t);
+    register int i, c;
 
-	sample = malloc(l);
-	sampleHistory = malloc(l);
+    sample = malloc(l);
+    sampleHistory = malloc(l);
 
-	/* Proceed to initialize the sample history with zeros or else the algorithm will not work */
+    /* Proceed to initialize the sample history with zeros or else the algorithm will not work */
     memset(sampleHistory, 0, l);
 
     for (i = 0; i < g_TotalSize; i += l)
@@ -257,13 +259,13 @@ static inline void processPCM16bits(void *inBuf, void *outBuf)
 static inline void processPCM24bits(void *inBuf, void *outBuf)
 {
     int24 *inPtr = (int24*) inBuf, *outPtr = (int24*) outBuf, *sample, *sampleHistory;
-	int min, max, l = g_NumChannels * sizeof(int24);
-	register int i, c;
+    int min, max, l = g_NumChannels * sizeof(int24);
+    register int i, c;
 
-	sample = malloc(l);
-	sampleHistory = malloc(l);
+    sample = malloc(l);
+    sampleHistory = malloc(l);
 
-	/* Proceed to initialize the sample history with zeros or else the algorithm will not work */
+    /* Proceed to initialize the sample history with zeros or else the algorithm will not work */
     memset(sampleHistory, 0, l);
 
     for (i = 0; i < g_TotalSize; i += l)
@@ -293,13 +295,13 @@ static inline void processPCM24bits(void *inBuf, void *outBuf)
 static inline void processPCM32bits(void *inBuf, void *outBuf)
 {
     int32_t *inPtr = (int32_t*) inBuf, *outPtr = (int32_t*) outBuf, min, max, *sample, *sampleHistory;
-	int l = g_NumChannels * sizeof(int32_t);
-	register int i, c;
+    int l = g_NumChannels * sizeof(int32_t);
+    register int i, c;
 
-	sample = malloc(l);
-	sampleHistory = malloc(l);
+    sample = malloc(l);
+    sampleHistory = malloc(l);
 
-	/* Proceed to initialize the sample history with zeros or else the algorithm will not work */
+    /* Proceed to initialize the sample history with zeros or else the algorithm will not work */
     memset(sampleHistory, 0, l);
 
     for (i = 0; i < g_TotalSize; i += l)
@@ -329,13 +331,13 @@ static inline void processPCM32bits(void *inBuf, void *outBuf)
 static inline void processFloat32bits(void *inBuf, void *outBuf)
 {
     float *inPtr = (float*) inBuf, *outPtr = (float*) outBuf, min, max, *sample, *sampleHistory;
-	int l = g_NumChannels * sizeof(float);
-	register int i, c;
+    int l = g_NumChannels * sizeof(float);
+    register int i, c;
 
-	sample = malloc(l);
-	sampleHistory = malloc(l);
+    sample = malloc(l);
+    sampleHistory = malloc(l);
 
-	/* Proceed to initialize the sample history with zeros or else the algorithm will not work */
+    /* Proceed to initialize the sample history with zeros or else the algorithm will not work */
     memset(sampleHistory, 0, l);
 
     for (i = 0; i < g_TotalSize; i += l)
@@ -365,13 +367,13 @@ static inline void processFloat32bits(void *inBuf, void *outBuf)
 static inline void processFloat64bits(void *inBuf, void *outBuf)
 {
     double *inPtr = (double*) inBuf, *outPtr = (double*) outBuf, min, max, *sample, *sampleHistory;
-	int l = g_NumChannels * sizeof(double);
-	register int i, c;
+    int l = g_NumChannels * sizeof(double);
+    register int i, c;
 
-	sample = malloc(l);
-	sampleHistory = malloc(l);
+    sample = malloc(l);
+    sampleHistory = malloc(l);
 
-	/* Proceed to initialize the sample history with zeros or else the algorithm will not work */
+    /* Proceed to initialize the sample history with zeros or else the algorithm will not work */
     memset(sampleHistory, 0, l);
 
     for (i = 0; i < g_TotalSize; i += l)
@@ -399,82 +401,82 @@ static inline void processFloat64bits(void *inBuf, void *outBuf)
 
 int main(int argc, char **argv)
 {
-	FILE *in, *out;
-	void *inBuf, *outBuf;
+    FILE *in, *out;
+    void *inBuf, *outBuf;
 
-	if (argc < 2 || argc > 3)
-	{
+    if (argc < 2 || argc > 3)
+    {
         printf("Usage: %s <input wav> <output wav>\n", argv[0]);
-		return 0;
-	}
+        return 0;
+    }
 
-	/* Opening the input file */
-	if ((in = fopen(argv[1], "rb")) == NULL)
+    /* Opening the input file */
+    if ((in = fopen(argv[1], "rb")) == NULL)
     {
         perror("Error! Can't open the input file.");
         return 1;
     }
 
     if (!parseWavHeader(in))
-	{
-		fputs("Error: Invalid WAV file.\n", stderr);
-		return 1;
-	}
+    {
+        fputs("Error: Invalid WAV file.\n", stderr);
+        return 1;
+    }
 
-	/* When the output file is specified */
-	if (argc == 3)
-	{
+    /* When the output file is specified */
+    if (argc == 3)
+    {
         if ((out = fopen(argv[2], "wb")) == NULL)
         {
             perror("Error! Can't open the output file.");
             return 1;
         }
-	}
-	/* When the output file is not specified */
-	else if (argc == 2)
-	{
+    }
+    /* When the output file is not specified */
+    else if (argc == 2)
+    {
         if ((out = fopen(strcat(argv[1], "_Doubled.wav"), "wb")) == NULL)
         {
             perror("Error! Can't open the output file.");
             return 1;
         }
-	}
+    }
 
-	inBuf  = malloc(g_TotalSize);
-	outBuf = malloc(g_TotalSize * 2);
+    inBuf  = malloc(g_TotalSize);
+    outBuf = malloc(g_TotalSize * 2);
 
-	fread(inBuf, 1, g_TotalSize, in);
-	fclose(in);
+    fread(inBuf, 1, g_TotalSize, in);
+    fclose(in);
 
-	printf("Interpolating %s (%d Hz) to %s (%d Hz)...\n", argv[1], g_SampleRate, argv[2], g_SampleRate * 2);
+    printf("Interpolating %s (%d Hz) to %s (%d Hz)...\n", argv[1], g_SampleRate, argv[2], g_SampleRate * 2);
 
-	/* Processing sampling */
-	if (g_AudioFormat == 1)
-	{
+    /* Processing sampling */
+    if (g_AudioFormat == 1)
+    {
         if (g_BitsPerSample == 16)      processPCM16bits(inBuf, outBuf);
         else if (g_BitsPerSample == 24) processPCM24bits(inBuf, outBuf);
         else                            processPCM32bits(inBuf, outBuf);
-	}
-	else
-	{
+    }
+    else
+    {
         if (g_BitsPerSample == 32)      processFloat32bits(inBuf, outBuf);
         else                            processFloat64bits(inBuf, outBuf);
-	}
+    }
 
-	writeWavHeader(out);
+    writeWavHeader(out);
 
-	fwrite(outBuf, 1, g_TotalSize * 2, out);
-	fclose(out);
+    fwrite(outBuf, 1, g_TotalSize * 2, out);
+    fclose(out);
 
-	if (g_PeakChunk != NULL)
-	{
+    if (g_PeakChunk != NULL)
+    {
         free(g_PeakChunk);
-	}
+    }
 
-	free(inBuf);
-	free(outBuf);
+    free(inBuf);
+    free(outBuf);
 
-	puts("Done!");
+    puts("Done!");
 
-	return 0;
+    return 0;
 }
