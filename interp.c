@@ -89,32 +89,26 @@ static inline int parseWavHeader(FILE *f)
     fread(&header, sizeof(WavHeader), 1, f);
 
     if (!CHECK_MAGIC(header.chunkId, "RIFF"))
-    {
         return 0;
-    }
 
     g_AudioFormat   = header.audioFormat;
     g_BitsPerSample = header.bitsPerSample;
     g_NumChannels   = header.numChannels;
     g_SampleRate    = header.sampleRate;
-	g_ByteRate		= header.byteRate;
+	g_ByteRate      = header.byteRate;
 
     /* If the format is PCM */
     if (header.audioFormat == 1)
     {
         /* Checking if the bits per sample are correct */
         if (header.bitsPerSample != 16 && header.bitsPerSample != 24 && header.bitsPerSample != 32)
-        {
             return 0;
-        }
 
         /* Checking the presence of the optional "fact chunk" */
         fread(&fact, sizeof(fact), 1, f);
 
         if (!CHECK_MAGIC(fact.chunkId, "fact"))
-        {
             fseek(f, -(long)sizeof(fact), SEEK_CUR);
-        }
 
         /* Reading the data chunk */
         fread(&data, sizeof(data), 1, f);
@@ -128,9 +122,7 @@ static inline int parseWavHeader(FILE *f)
     {
         /* Checking if the bits per sample are correct */
         if (header.bitsPerSample != 32 && header.bitsPerSample != 64)
-        {
             return 0;
-        }
 
         /* The IEEE float specifies that an extension must be present on the header chunk,
          * however, 32-bit floating point WAV exported from Audacity doesn't have it.
@@ -141,7 +133,7 @@ static inline int parseWavHeader(FILE *f)
         /* Skipping directly to the fact chunk */
         while (!feof(f))
         {
-            if (CHECK_MAGIC(*fgets(sbuf, 5, f), "fact"))
+            if (CHECK_MAGIC(*fgets(sbuf, 4, f), "fact"))
             {
                 fseek(f, -4, SEEK_CUR);
                 break;
@@ -208,9 +200,7 @@ static inline void writeWavHeader(FILE *f)
 
     /* Setting the WAV peak chunk */
     if (g_PeakChunk != NULL)
-    {
         fwrite(g_PeakChunk, g_PeakChunkLength, 1, f);
-    }
 
     /* Setting the WAV data chunk */
     SET_MAGIC(data.chunkId, "data");
@@ -246,9 +236,7 @@ static inline void processPCM16bits(void *inBuf, void *outBuf)
         }
 
         for (c = 0; c < g_NumChannels; c++)
-        {
             sampleHistory[c] = *outPtr++ = sample[c];
-        }
     }
 
     free(sampleHistory);
@@ -282,9 +270,7 @@ static inline void processPCM24bits(void *inBuf, void *outBuf)
         }
 
         for (c = 0; c < g_NumChannels; c++)
-        {
             sampleHistory[c] = *outPtr++ = sample[c];
-        }
     }
 
     free(sampleHistory);
@@ -318,9 +304,7 @@ static inline void processPCM32bits(void *inBuf, void *outBuf)
         }
 
         for (c = 0; c < g_NumChannels; c++)
-        {
             sampleHistory[c] = *outPtr++ = sample[c];
-        }
     }
 
     free(sampleHistory);
@@ -354,9 +338,7 @@ static inline void processFloat32bits(void *inBuf, void *outBuf)
         }
 
         for (c = 0; c < g_NumChannels; c++)
-        {
             sampleHistory[c] = *outPtr++ = sample[c];
-        }
     }
 
     free(sampleHistory);
@@ -390,93 +372,172 @@ static inline void processFloat64bits(void *inBuf, void *outBuf)
         }
 
         for (c = 0; c < g_NumChannels; c++)
-        {
             sampleHistory[c] = *outPtr++ = sample[c];
-        }
     }
 
     free(sampleHistory);
     free(sample);
 }
 
+static void trimWavExtension(char *filename)
+{
+    const size_t len = strlen(filename);
+    const char *ext;
+    if (len < 4)
+        return;
+
+    ext = &filename[len - 4];
+    if (strcmp(ext, ".wav") == 0)
+        filename[len - 4] = '\0';
+}
+
+static void displayHelp(const char *prg)
+{
+    printf("Usage: %s (options) (input wave 1) [(...) (input wav n)]\n\nOptions:\n  -o : Output file or output directory depending on the input.\n", prg);
+}
+
 int main(int argc, char **argv)
 {
     FILE *in, *out;
     void *inBuf, *outBuf;
+    char *output = NULL, isDir = 0;
+    register int i = 1;
 
-    if (argc < 2 || argc > 3)
+    if (argc < 2)
     {
-        printf("Usage: %s <input wav> <output wav>\n", argv[0]);
+        displayHelp(argv[0]);
         return 0;
     }
 
-    /* Opening the input file */
-    if ((in = fopen(argv[1], "rb")) == NULL)
+    /* Handling options */
+    if (argv[1][0] == '-')
     {
-        perror("Error! Can't open the input file.");
-        return 1;
-    }
-
-    if (!parseWavHeader(in))
-    {
-        fputs("Error: Invalid WAV file.\n", stderr);
-        return 1;
-    }
-
-    /* When the output file is specified */
-    if (argc == 3)
-    {
-        if ((out = fopen(argv[2], "wb")) == NULL)
+        switch (argv[1][1])
         {
-            perror("Error! Can't open the output file.");
-            return 1;
+            case '?':
+            case 'h':
+                displayHelp(argv[0]);
+                return 0;
+            case 'o':
+                if (argc > 4)
+                {
+                    /* If multiple input follows, treat the out as a directory */
+                    isDir = 1;
+                }
+                if (argc <= 3)
+                {
+                    fputs("Error: Incomplete command.\n", stderr);
+                    displayHelp(argv[0]);
+                    return 1;
+                }
+                output = argv[2];
+                i = 3;
+
+                /* Check the validity of the path */
+#ifdef _WIN32
+                if (!isDir && output[strlen(output) - 1] == '\\')
+#else
+                if (!isDir && output[strlen(output) - 1] == '/')
+#endif
+                {
+                    fputs("Error: The output path must not be a directory.\n", stderr);
+                    return 1;
+                }
+                break;
+            default:
+                fputs("Error: Unrecognized option.\n", stderr);
+                displayHelp(argv[0]);
+                return 1;
         }
     }
-    /* When the output file is not specified */
-    else if (argc == 2)
+
+    /* Processing each file */
+    for (; i < argc; i++)
     {
-        if ((out = fopen(strcat(argv[1], "_Doubled.wav"), "wb")) == NULL)
+        /* Opening the input file */
+        if ((in = fopen(argv[i], "rb")) == NULL)
         {
-            perror("Error! Can't open the output file.");
-            return 1;
+            fprintf(stderr, "Error: Can't open the input file: %s\n", argv[i]);
+            continue;
         }
+
+        if (!parseWavHeader(in))
+        {
+            fprintf(stderr, "Error: Invalid WAV file: %s\n", argv[i]);
+            continue;
+        }
+
+        /* When the output file is specified */
+        if (output)
+        {
+            if (isDir)
+            {
+                char *const path = malloc(strlen(output) + strlen(argv[i]) + 2);
+                sprintf(path, "%s/%s", output, argv[i]);
+                if ((out = fopen(path, "wb")) == NULL)
+                {
+                    fprintf(stderr, "Error: Can't create the output file: %s\n", path);
+                    free(path);
+                    continue;
+                }
+                free(path);
+            }
+            else
+            {
+                if ((out = fopen(output, "wb")) == NULL)
+                {
+                    fprintf(stderr, "Error: Can't create the output file: %s\n", output);
+                    continue;
+                }
+            }
+        }
+        /* When the output file is not specified */
+        else
+        {
+            char *const path = malloc(strlen(argv[i]) + 13);
+            strcpy(path, argv[i]);
+            trimWavExtension(path);
+            if ((out = fopen(strcat(path, "_doubled.wav"), "wb")) == NULL)
+            {
+                fprintf(stderr, "Error: Can't create the output file: %s\n", path);
+                free(path);
+                continue;
+            }
+            free(path);
+        }
+
+        inBuf  = malloc(g_TotalSize);
+        outBuf = malloc(g_TotalSize * 2);
+
+        fread(inBuf, 1, g_TotalSize, in);
+        fclose(in);
+
+        printf("Interpolating %s (%d Hz) to (%d Hz)...\n", argv[i], g_SampleRate, g_SampleRate * 2);
+
+        /* Processing sampling */
+        if (g_AudioFormat == 1)
+        {
+            if (g_BitsPerSample == 16)      processPCM16bits(inBuf, outBuf);
+            else if (g_BitsPerSample == 24) processPCM24bits(inBuf, outBuf);
+            else                            processPCM32bits(inBuf, outBuf);
+        }
+        else
+        {
+            if (g_BitsPerSample == 32)      processFloat32bits(inBuf, outBuf);
+            else                            processFloat64bits(inBuf, outBuf);
+        }
+
+        writeWavHeader(out);
+
+        fwrite(outBuf, 1, g_TotalSize * 2, out);
+        fclose(out);
+
+        if (g_PeakChunk != NULL)
+            free(g_PeakChunk);
+
+        free(inBuf);
+        free(outBuf);
     }
-
-    inBuf  = malloc(g_TotalSize);
-    outBuf = malloc(g_TotalSize * 2);
-
-    fread(inBuf, 1, g_TotalSize, in);
-    fclose(in);
-
-    printf("Interpolating %s (%d Hz) to %s (%d Hz)...\n", argv[1], g_SampleRate, argv[2], g_SampleRate * 2);
-
-    /* Processing sampling */
-    if (g_AudioFormat == 1)
-    {
-        if (g_BitsPerSample == 16)      processPCM16bits(inBuf, outBuf);
-        else if (g_BitsPerSample == 24) processPCM24bits(inBuf, outBuf);
-        else                            processPCM32bits(inBuf, outBuf);
-    }
-    else
-    {
-        if (g_BitsPerSample == 32)      processFloat32bits(inBuf, outBuf);
-        else                            processFloat64bits(inBuf, outBuf);
-    }
-
-    writeWavHeader(out);
-
-    fwrite(outBuf, 1, g_TotalSize * 2, out);
-    fclose(out);
-
-    if (g_PeakChunk != NULL)
-    {
-        free(g_PeakChunk);
-    }
-
-    free(inBuf);
-    free(outBuf);
-
-    puts("Done!");
 
     return 0;
 }
