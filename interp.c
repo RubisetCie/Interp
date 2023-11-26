@@ -15,8 +15,8 @@
 #define MIN(a, b) ((a)<(b)?(a):(b))
 #define MAX(a, b) ((a)>(b)?(a):(b))
 
-#define CHECK_MAGIC(a, b)   ((*(int *)(&(a))) == (*(int *)(&(b))))
-#define SET_MAGIC(a, b)     ((*(int *)(&(a))) = (*(int *)(&(b))))
+#define CHECK_MAGIC(a, b)   ((*(int*)(&(a))) == (*(int *)(&(b))))
+#define SET_MAGIC(a, b)     ((*(int*)(&(a))) = (*(int *)(&(b))))
 
 /* Definition of the WAV position peak */
 typedef struct PeakPos
@@ -83,7 +83,7 @@ static inline int parseWavHeader(FILE *f)
     WavHeader header;
     WavFact fact;
     WavData data;
-    char sbuf[4];
+    char sbuf[5];
 
     /* Reading the header */
     fread(&header, sizeof(WavHeader), 1, f);
@@ -95,7 +95,7 @@ static inline int parseWavHeader(FILE *f)
     g_BitsPerSample = header.bitsPerSample;
     g_NumChannels   = header.numChannels;
     g_SampleRate    = header.sampleRate;
-	g_ByteRate      = header.byteRate;
+    g_ByteRate      = header.byteRate;
 
     /* If the format is PCM */
     if (header.audioFormat == 1)
@@ -133,7 +133,7 @@ static inline int parseWavHeader(FILE *f)
         /* Skipping directly to the fact chunk */
         while (!feof(f))
         {
-            if (CHECK_MAGIC(*fgets(sbuf, 4, f), "fact"))
+            if (CHECK_MAGIC(*fgets(sbuf, 5, f), "fact"))
             {
                 fseek(f, -4, SEEK_CUR);
                 break;
