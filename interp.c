@@ -426,7 +426,7 @@ int main(int argc, char **argv)
                 }
                 if (argc <= 3)
                 {
-                    fputs("Error: Incomplete command.\n", stderr);
+                    fputs("Error: Incomplete command!\n", stderr);
                     displayHelp(argv[0]);
                     return 1;
                 }
@@ -440,12 +440,12 @@ int main(int argc, char **argv)
                 if (!isDir && output[strlen(output) - 1] == '/')
 #endif
                 {
-                    fputs("Error: The output path must not be a directory.\n", stderr);
+                    fputs("Error: The output path must not be a directory!\n", stderr);
                     return 1;
                 }
                 break;
             default:
-                fputs("Error: Unrecognized option.\n", stderr);
+                fprintf(stderr, "Error: Unrecognized option: '%c'\n", argv[1][1]);
                 displayHelp(argv[0]);
                 return 1;
         }
