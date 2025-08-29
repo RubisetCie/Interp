@@ -464,6 +464,7 @@ int main(int argc, char **argv)
         if (!parseWavHeader(in))
         {
             fprintf(stderr, "Error: Invalid WAV file: %s\n", argv[i]);
+            fclose(in);
             continue;
         }
 
@@ -477,6 +478,7 @@ int main(int argc, char **argv)
                 if ((out = fopen(path, "wb")) == NULL)
                 {
                     fprintf(stderr, "Error: Can't create the output file: %s\n", path);
+                    fclose(in);
                     free(path);
                     continue;
                 }
@@ -487,6 +489,7 @@ int main(int argc, char **argv)
                 if ((out = fopen(output, "wb")) == NULL)
                 {
                     fprintf(stderr, "Error: Can't create the output file: %s\n", output);
+                    fclose(in);
                     continue;
                 }
             }
@@ -500,6 +503,7 @@ int main(int argc, char **argv)
             if ((out = fopen(strcat(path, "_doubled.wav"), "wb")) == NULL)
             {
                 fprintf(stderr, "Error: Can't create the output file: %s\n", path);
+                fclose(in);
                 free(path);
                 continue;
             }
